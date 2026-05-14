@@ -37,7 +37,7 @@ jobs:
       - name: Run MLflow Project Training
         run: |
           cd MLProject
-          python modelling.py \
+          mlflow run . \
             --n_estimators ${{ github.event.inputs.n_estimators || '100' }} \
             --max_depth ${{ github.event.inputs.max_depth || '6' }} \
             --min_samples_split 2 \
