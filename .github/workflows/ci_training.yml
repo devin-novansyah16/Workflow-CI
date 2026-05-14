@@ -38,12 +38,13 @@ jobs:
         run: |
           cd MLProject
           mlflow run . \
-            --n_estimators ${{ github.event.inputs.n_estimators || '100' }} \
-            --max_depth ${{ github.event.inputs.max_depth || '6' }} \
-            --min_samples_split 2 \
-            --max_features sqrt \
-            --test_size 0.2 \
-            --random_state 42
+            -P n_estimators=${{ github.event.inputs.n_estimators || '100' }} \
+            -P max_depth=${{ github.event.inputs.max_depth || '6' }} \
+            -P min_samples_split=2 \
+            -P max_features=sqrt \
+            -P test_size=0.2 \
+            -P random_state=42 \
+            --env-manager=local
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
