@@ -166,8 +166,6 @@ def main():
 
     # ── MLflow Logging ─────────────────────────
     print('[4/4] Manual logging ke MLflow...')
-    mlflow.set_experiment('Titanic_WorkflowCI_Devin-Novansyah')
-
     with mlflow.start_run(run_name='MLProject_CI_Run') as run:
         print(f'      Run ID: {run.info.run_id}')
 
