@@ -38,15 +38,16 @@ jobs:
         run: |
           cd MLProject
           mlflow run . \
+            --experiment-name "Titanic_WorkflowCI_Devin-Novansyah" \
+            --env-manager=local \
             -P n_estimators=${{ github.event.inputs.n_estimators || '100' }} \
             -P max_depth=${{ github.event.inputs.max_depth || '6' }} \
             -P min_samples_split=2 \
             -P max_features=sqrt \
             -P test_size=0.2 \
-            -P random_state=42 \
-            --env-manager=local
+            -P random_state=42
 
-      - name: Upload Artifacts
+      - name: Upload Artifacts to GitHub Actions
         uses: actions/upload-artifact@v4
         with:
           name: titanic-model-artifacts-${{ github.run_number }}
