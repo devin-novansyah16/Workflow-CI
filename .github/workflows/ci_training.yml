@@ -1,1 +1,168 @@
+name: CI - Titanic MLProject Training
 
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'MLProject/**'
+  workflow_dispatch:
+    inputs:
+      n_estimators:
+        description: 'Jumlah estimator (pohon)'
+        required: false
+        default: '100'
+      max_depth:
+        description: 'Kedalaman maksimum pohon'
+        required: false
+        default: '6'
+      min_samples_split:
+        description: 'Min samples untuk split'
+        required: false
+        default: '2'
+      max_features:
+        description: 'Jumlah fitur per split (sqrt/log2)'
+        required: false
+        default: 'sqrt'
+
+jobs:
+  train:
+    name: Train Titanic Model
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ── 2. Setup Python ──────────────────────
+      - name: Set Up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # ── 3. Cache pip ─────────────────────────
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('MLProject/conda.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # ── 4. Install dependencies ───────────────
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy scikit-learn mlflow matplotlib seaborn
+
+      # ── 5. Jalankan training via MLflow Project ─
+      - name: Run MLflow Project Training
+        run: |
+          cd MLProject
+          mlflow run . \
+            -P n_estimators=${{ github.event.inputs.n_estimators || '100' }} \
+            -P max_depth=${{ github.event.inputs.max_depth || '6' }} \
+            -P min_samples_split=${{ github.event.inputs.min_samples_split || '2' }} \
+            -P max_features=${{ github.event.inputs.max_features || 'sqrt' }} \
+            --env-manager=local
+
+      # ── 6. Kumpulkan artefak MLflow ──────────
+      - name: Collect MLflow Artifacts
+        run: |
+          cd MLProject
+          echo "=== Struktur mlruns ==="
+          find mlruns -type f | head -40 || echo "mlruns belum ada"
+
+          # Buat folder output artefak
+          mkdir -p ../artifacts/plots
+          mkdir -p ../artifacts/reports
+          mkdir -p ../artifacts/model
+
+          # Copy semua artefak dari mlruns ke folder artifacts
+          find mlruns -name "confusion_matrix.png" -exec cp {} ../artifacts/plots/ \;
+          find mlruns -name "feature_importance.png" -exec cp {} ../artifacts/plots/ \;
+          find mlruns -name "classification_report.txt" -exec cp {} ../artifacts/reports/ \;
+          find mlruns -name "params.json" -exec cp {} ../artifacts/reports/ \;
+          find mlruns -name "MLmodel" -exec cp --parents {} ../artifacts/ \; 2>/dev/null || true
+
+          # Copy run_id
+          [ -f MLProject/run_id.txt ] && cp MLProject/run_id.txt ../artifacts/ || true
+
+          echo "=== Artefak yang dikumpulkan ==="
+          find ../artifacts -type f
+
+      # ── 7. Verifikasi metrik ──────────────────
+      - name: Verify Training Results
+        run: |
+          cd MLProject
+          python - <<'EOF'
+          import os, glob, json
+
+          # Baca metrik dari mlruns
+          metric_files = glob.glob('mlruns/**/metrics/**', recursive=True)
+          print("=== METRIK HASIL TRAINING ===")
+          metrics = {}
+          for f in metric_files:
+              if os.path.isfile(f):
+                  name = os.path.basename(f)
+                  with open(f) as fp:
+                      lines = fp.readlines()
+                      if lines:
+                          val = lines[-1].strip().split()[1]
+                          metrics[name] = float(val)
+                          print(f"  {name}: {val}")
+
+          # Cek minimum accuracy
+          acc = metrics.get('accuracy', 0)
+          print(f"\nAccuracy: {acc:.4f}")
+          assert acc > 0.70, f"Accuracy terlalu rendah: {acc:.4f}"
+          print("✅ Accuracy check passed!")
+          EOF
+
+      # ── 8. Upload artefak ke GitHub Actions ──
+      - name: Upload Artifacts to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: titanic-model-artifacts-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 30
+
+      # ── 9. Simpan artefak ke repository (commit) ─
+      - name: Save Artifacts to Repository
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Buat folder saved_artifacts di repo
+          mkdir -p saved_artifacts/run-${{ github.run_number }}
+          cp -r artifacts/* saved_artifacts/run-${{ github.run_number }}/ 2>/dev/null || true
+
+          # Tambahkan info run
+          echo "Run Number : ${{ github.run_number }}"      >  saved_artifacts/run-${{ github.run_number }}/run_info.txt
+          echo "Triggered  : ${{ github.event_name }}"      >> saved_artifacts/run-${{ github.run_number }}/run_info.txt
+          echo "Commit SHA : ${{ github.sha }}"             >> saved_artifacts/run-${{ github.run_number }}/run_info.txt
+          echo "Timestamp  : $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> saved_artifacts/run-${{ github.run_number }}/run_info.txt
+
+          git add saved_artifacts/
+          git diff --staged --quiet || \
+            git commit -m "ci: save artifacts from run #${{ github.run_number }} [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 10. Summary ───────────────────────────
+      - name: Print Job Summary
+        run: |
+          echo "## ✅ CI Training Selesai" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Info | Detail |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Author | Devin Novansyah |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dataset | Titanic |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run Number | ${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| n_estimators | ${{ github.event.inputs.n_estimators || '100' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| max_depth | ${{ github.event.inputs.max_depth || '6' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Artefak tersimpan di: \`saved_artifacts/run-${{ github.run_number }}/\`" >> $GITHUB_STEP_SUMMARY
