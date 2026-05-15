@@ -4,6 +4,7 @@ conda_env: conda.yaml
 
 entry_points:
   main:
+    command: "python modelling.py --n_estimators {n_estimators} --max_depth {max_depth} --min_samples_split {min_samples_split} --max_features {max_features} --test_size {test_size} --random_state {random_state}"
     parameters:
       n_estimators:
         type: int
@@ -23,11 +24,3 @@ entry_points:
       random_state:
         type: int
         default: 42
-    command: >
-      python modelling.py
-        --n_estimators {n_estimators}
-        --max_depth {max_depth}
-        --min_samples_split {min_samples_split}
-        --max_features {max_features}
-        --test_size {test_size}
-        --random_state {random_state}
