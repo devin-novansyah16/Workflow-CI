@@ -15,6 +15,9 @@ on:
         required: false
         default: '6'
 
+permissions:
+  contents: write
+
 jobs:
   train:
     name: Train Titanic Model
